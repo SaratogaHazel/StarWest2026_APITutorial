@@ -1,0 +1,127 @@
+name: Load Test
+
+# Runs the login load test and enforces the 500 ms p95 budget.
+# Kept separate from api-tests.yml so it can be disabled or scheduled
+# independently of the functional suite.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: load-test-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JMETER_VERSION: 5.6.3
+  PLUGINS_MANAGER_VERSION: "2.0"
+  CMDRUNNER_VERSION: "2.3"
+  TEST_PORT: 3000
+  P95_THRESHOLD_MS: 500
+
+jobs:
+  login-load-test:
+    name: Login endpoint p95 budget
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # JMeter plus the Ultimate Thread Group plugin is ~90MB, so cache it.
+      - name: Cache JMeter
+        id: cache-jmeter
+        uses: actions/cache@v4
+        with:
+          path: ~/jmeter
+          key: jmeter-${{ env.JMETER_VERSION }}-casutg-${{ env.PLUGINS_MANAGER_VERSION }}
+
+      - name: Install JMeter and the Ultimate Thread Group plugin
+        if: steps.cache-jmeter.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p ~/jmeter && cd ~/jmeter
+          curl -sSLf -o jmeter.tgz \
+            "https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz"
+          tar -xzf jmeter.tgz && rm jmeter.tgz
+          JM="$HOME/jmeter/apache-jmeter-${JMETER_VERSION}"
+          # The plugins manager needs cmdrunner on the classpath to run headless.
+          curl -sSLf -o "$JM/lib/ext/jmeter-plugins-manager.jar" \
+            "https://repo1.maven.org/maven2/kg/apc/jmeter-plugins-manager/${PLUGINS_MANAGER_VERSION}/jmeter-plugins-manager-${PLUGINS_MANAGER_VERSION}.jar"
+          curl -sSLf -o "$JM/lib/cmdrunner.jar" \
+            "https://repo1.maven.org/maven2/kg/apc/cmdrunner/${CMDRUNNER_VERSION}/cmdrunner-${CMDRUNNER_VERSION}.jar"
+          java -cp "$JM/lib/ext/jmeter-plugins-manager.jar" \
+            org.jmeterplugins.repository.PluginManagerCMDInstaller
+          "$JM/bin/PluginsManagerCMD.sh" install jpgc-casutg
+
+      - name: Start the API in the background
+        run: |
+          PORT=$TEST_PORT npm start > api.log 2>&1 &
+          echo "Started the API, waiting for it to answer..."
+
+      - name: Wait for the API healthcheck
+        run: |
+          for attempt in $(seq 1 30); do
+            status=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$TEST_PORT/api/health" || true)
+            if [ "$status" = "200" ]; then
+              echo "API is healthy after ${attempt} attempt(s)."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::API did not become healthy within 30s."
+          cat api.log || true
+          exit 1
+
+      - name: Run the login load test
+        run: |
+          set -euo pipefail
+          JM="$HOME/jmeter/apache-jmeter-${JMETER_VERSION}"
+          mkdir -p test/jmeterTesting/results
+          # reset_state_on_thread_group_iteration defaults to true, which drops the
+          # HTTP connection pool every iteration and opens a fresh socket per
+          # request. Disabling it lets keep-alive actually be reused.
+          "$JM/bin/jmeter" -n \
+            -t test/jmeterTesting/login-load-test.jmx \
+            -l test/jmeterTesting/results/results.jtl \
+            -e -o test/jmeterTesting/results/html \
+            -j test/jmeterTesting/results/jmeter.log \
+            -Jport=$TEST_PORT \
+            -Jhttpclient.reset_state_on_thread_group_iteration=false
+
+      - name: Enforce the p95 budget
+        run: node test/jmeterTesting/check-threshold.js
+
+      - name: Show API log on failure
+        if: failure()
+        run: cat api.log || true
+
+      - name: Upload the JMeter dashboard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmeter-load-report
+          path: test/jmeterTesting/results/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Stop the API
+        if: always()
+        run: pkill -f 'node src/server.js' || true
