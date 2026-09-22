@@ -40,12 +40,22 @@ async function waitUntilReady() {
 }
 
 /**
- * Starts the API in its own process on the test port.
+ * Makes sure an API is listening on the test port.
  *
- * A separate process is what lets Supertest talk real HTTP to a real server
- * instead of importing the Express app.
+ * If one is already answering the healthcheck it is reused -- this is what the
+ * GitHub Actions pipeline does, since it starts the API and waits for it before
+ * invoking Mocha. Otherwise a fresh one is started here, which keeps
+ * `npm test` self-contained on a developer machine.
+ *
+ * Either way the API runs in its own process, which is what lets Supertest talk
+ * real HTTP to a real server instead of importing the Express app.
  */
 async function start() {
+  if (await ping()) {
+    console.log(`  Reusing the API already running at ${BASE_URL}`);
+    return;
+  }
+
   serverProcess = spawn(process.execPath, [SERVER_ENTRY], {
     env: { ...process.env, PORT: String(PORT) },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -70,7 +80,10 @@ async function start() {
   console.log(`  Test API ready at ${BASE_URL}`);
 }
 
-/** Stops the API process started by start(). */
+/**
+ * Stops the API process, but only if start() was the one that launched it.
+ * An API supplied by the pipeline is left alone.
+ */
 function stop() {
   if (!serverProcess || serverProcess.exitCode !== null) {
     return Promise.resolve();

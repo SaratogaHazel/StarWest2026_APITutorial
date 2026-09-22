@@ -315,3 +315,21 @@ const response = await send(this, request().get('/api/health'));
 ```
 
 Test data comes from the [Existent Data](#existent-data) section above, so the suite and the documentation cannot drift apart.
+
+### Continuous integration
+
+[`.github/workflows/api-tests.yml`](.github/workflows/api-tests.yml) runs the suite on GitHub Actions for every pull request targeting `main`, and again on `main` once a pull request is merged. It can also be started by hand from the Actions tab.
+
+The job mirrors what you would do locally:
+
+1. **Check out the repository**
+2. **Install dependencies** with `npm ci`
+3. **Start the API in the background** on port `3001`, logging to `api.log`
+4. **Wait for the healthcheck** — polls `GET /api/health` once a second for up to 30 seconds, and fails the build with the API log if it never answers
+5. **Run the tests** with `npm test`
+
+Step 4 is the gate: the tests only run once the API has proven it is up, so a slow start shows as a clear "API did not become healthy" error rather than a confusing pile of connection-refused failures.
+
+Because the healthcheck gate has already started the API, the suite detects the running server and reuses it instead of starting a second one (see `test/support/server.js`). The same `npm test` command therefore works in both places — it starts its own API locally, and adopts the pipeline's API in CI.
+
+The Mochawesome report is uploaded as a build artifact named `path-coverage-report` on every run, pass or fail, and kept for 14 days.
