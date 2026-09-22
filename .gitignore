@@ -3,3 +3,6 @@ node_modules/
 npm-debug.log*
 *.log
 .DS_Store
+
+# Generated test reports
+test/reports/

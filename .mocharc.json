@@ -1,0 +1,16 @@
+{
+  "spec": "test/pathCoverage/**/*.test.js",
+  "require": "test/support/hooks.js",
+  "reporter": "mochawesome",
+  "reporter-option": [
+    "reportDir=test/reports",
+    "reportFilename=path-coverage",
+    "reportTitle=StarWest 2026 API - Path Coverage",
+    "reportPageTitle=Path Coverage Report",
+    "charts=true",
+    "overwrite=true",
+    "showSkipped=true"
+  ],
+  "timeout": 20000,
+  "recursive": true
+}
