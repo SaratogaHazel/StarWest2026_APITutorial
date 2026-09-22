@@ -7,7 +7,7 @@ A small e-commerce REST API built with **JavaScript** and **Express**. It demons
 1. **JWT authentication** — a consumer registers, logs in, and receives a signed token.
 2. **A rules-driven checkout** — the token is required to price a cart, and the payment method changes the total.
 
-Everything runs in memory. There is no database, no migration step, and no test automation — clone, install, and run.
+Everything runs in memory. There is no database and no migration step — clone, install, and run.
 
 The project is organised in conventional Express layers so each responsibility is easy to find:
 
@@ -73,7 +73,7 @@ Optional environment variables:
 - The API exposes exactly four business endpoints — login, register, checkout, and healthcheck — plus `/api-docs`, which renders the Swagger file.
 - All data lives in memory and **resets every time the server restarts**. Users you register and orders you place are not persisted.
 - The store is seeded with 3 users and 3 products (see below).
-- No test automation is included in this project.
+- Functional test automation covering every documented API path lives in `test/pathCoverage` (see [Test Automation](#test-automation)).
 
 **Tutorial simplifications — do not copy these into production**
 
@@ -258,3 +258,60 @@ Open <http://localhost:3000/api-docs>, then:
 3. Run `POST /api/checkout` — the token is now attached automatically.
 
 The raw specification is served at <http://localhost:3000/api-docs/swagger.yaml> and is also committed as [`swagger.yaml`](swagger.yaml) at the repository root, ready to import into Postman or another client.
+
+## Test Automation
+
+Functional API tests built with **Mocha**, **Supertest** and **Chai**, reported by **Mochawesome**.
+
+```bash
+npm test                  # or: npm run test:pathCoverage
+```
+
+The command is self-contained: it starts the API in its own process on port `3001`, waits for the healthcheck to answer, runs the suite over real HTTP, then shuts the server down. Nothing needs to be running beforehand, and because the API restarts each run, the in-memory data always begins in its seeded state.
+
+### Path coverage
+
+The suite is designed for **path coverage** — the proportion of the API's paths that the tests exercise. `swagger.yaml` documents four paths, and there is exactly one test per path:
+
+| # | Path | Test file |
+|---|---|---|
+| 1 | `GET /api/health` | [`test/pathCoverage/health.test.js`](test/pathCoverage/health.test.js) |
+| 2 | `POST /api/auth/register` | [`test/pathCoverage/register.test.js`](test/pathCoverage/register.test.js) |
+| 3 | `POST /api/auth/login` | [`test/pathCoverage/login.test.js`](test/pathCoverage/login.test.js) |
+| 4 | `POST /api/checkout` | [`test/pathCoverage/checkout.test.js`](test/pathCoverage/checkout.test.js) |
+
+**4 of 4 paths exercised = 100% path coverage.**
+
+Path coverage asks only whether each path was reached, so one test per path is enough. It deliberately says nothing about whether each path's *rules* are correct — that needs other techniques, such as the equivalence partitioning applied to the discount rule.
+
+### Layout
+
+```
+test/
+  pathCoverage/     One test file per API path
+  support/
+    config.js       Base URL and test data taken from this README
+    request.js      Supertest bound to the server's URL
+    exchange.js     Sends a request and records it in the report
+    server.js       Starts and stops the API process
+    hooks.js        Mocha global setup and teardown
+```
+
+Supertest is pointed at `http://localhost:3001` rather than at the Express app object, so requests travel the real HTTP stack — routing, headers, status codes and JSON serialisation are all exercised as a client would meet them.
+
+### Reports
+
+Mochawesome writes to `test/reports/` on every run (generated output, not committed):
+
+- `test/reports/path-coverage.html` — open in a browser. Assets are inlined, so it is a single self-contained file you can email or attach as a CI artifact.
+- `test/reports/path-coverage.json` — machine-readable, for CI
+
+Every test records its full HTTP exchange in the report through `test/support/exchange.js`: the request method, URL, headers and body, and the response status, headers and body. This is attached on failures too, so a red build can be diagnosed from the report alone without re-running anything locally. Passwords are masked and bearer tokens truncated before anything is written.
+
+Because the helper needs Mocha's test context, tests are written as `async function ()` rather than arrow functions, and pass `this` to `send`:
+
+```js
+const response = await send(this, request().get('/api/health'));
+```
+
+Test data comes from the [Existent Data](#existent-data) section above, so the suite and the documentation cannot drift apart.
