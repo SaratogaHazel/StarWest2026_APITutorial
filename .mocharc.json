@@ -7,6 +7,7 @@
     "reportFilename=path-coverage",
     "reportTitle=StarWest 2026 API - Path Coverage",
     "reportPageTitle=Path Coverage Report",
+    "inlineAssets=true",
     "charts=true",
     "overwrite=true",
     "showSkipped=true"

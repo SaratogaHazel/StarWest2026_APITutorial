@@ -302,7 +302,7 @@ Supertest is pointed at `http://localhost:3001` rather than at the Express app o
 
 Mochawesome writes to `test/reports/` on every run (generated output, not committed):
 
-- `test/reports/path-coverage.html` — open in a browser
+- `test/reports/path-coverage.html` — open in a browser. Assets are inlined, so it is a single self-contained file you can email or attach as a CI artifact.
 - `test/reports/path-coverage.json` — machine-readable, for CI
 
 Test data comes from the [Existent Data](#existent-data) section above, so the suite and the documentation cannot drift apart.
