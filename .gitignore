@@ -6,3 +6,6 @@ npm-debug.log*
 
 # Generated test reports
 test/reports/
+
+# Generated JMeter results
+test/jmeterTesting/results/
