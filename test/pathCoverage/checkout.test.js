@@ -1,6 +1,7 @@
 const { expect } = require('chai');
 
 const request = require('../support/request');
+const { send } = require('../support/exchange');
 const { seededUser, products } = require('../support/config');
 
 /**
@@ -20,22 +21,25 @@ describe('Path Coverage: POST /api/checkout', () => {
       .set('Content-Type', 'application/json')
       .send(seededUser);
 
-    expect(login.status, 'login precondition failed').to.equal(200);
+    expect(login.status, `login precondition failed: ${JSON.stringify(login.body)}`).to.equal(200);
     token = login.body.token;
   });
 
-  it('prices a cash order for an authenticated user', async () => {
-    const response = await request()
-      .post('/api/checkout')
-      .set('Authorization', `Bearer ${token}`)
-      .set('Content-Type', 'application/json')
-      .send({
-        paymentMethod: 'cash',
-        items: [
-          { productId: products.wirelessMouse.id, quantity: 2 },
-          { productId: products.mechanicalKeyboard.id, quantity: 1 },
-        ],
-      });
+  it('prices a cash order for an authenticated user', async function () {
+    const response = await send(
+      this,
+      request()
+        .post('/api/checkout')
+        .set('Authorization', `Bearer ${token}`)
+        .set('Content-Type', 'application/json')
+        .send({
+          paymentMethod: 'cash',
+          items: [
+            { productId: products.wirelessMouse.id, quantity: 2 },
+            { productId: products.mechanicalKeyboard.id, quantity: 1 },
+          ],
+        })
+    );
 
     expect(response.status).to.equal(201);
     expect(response.body).to.have.property('orderId').that.is.a('string');

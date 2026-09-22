@@ -292,6 +292,7 @@ test/
   support/
     config.js       Base URL and test data taken from this README
     request.js      Supertest bound to the server's URL
+    exchange.js     Sends a request and records it in the report
     server.js       Starts and stops the API process
     hooks.js        Mocha global setup and teardown
 ```
@@ -304,5 +305,13 @@ Mochawesome writes to `test/reports/` on every run (generated output, not commit
 
 - `test/reports/path-coverage.html` — open in a browser. Assets are inlined, so it is a single self-contained file you can email or attach as a CI artifact.
 - `test/reports/path-coverage.json` — machine-readable, for CI
+
+Every test records its full HTTP exchange in the report through `test/support/exchange.js`: the request method, URL, headers and body, and the response status, headers and body. This is attached on failures too, so a red build can be diagnosed from the report alone without re-running anything locally. Passwords are masked and bearer tokens truncated before anything is written.
+
+Because the helper needs Mocha's test context, tests are written as `async function ()` rather than arrow functions, and pass `this` to `send`:
+
+```js
+const response = await send(this, request().get('/api/health'));
+```
 
 Test data comes from the [Existent Data](#existent-data) section above, so the suite and the documentation cannot drift apart.

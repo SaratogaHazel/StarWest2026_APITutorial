@@ -1,6 +1,7 @@
 const { expect } = require('chai');
 
 const request = require('../support/request');
+const { send } = require('../support/exchange');
 const { newUser } = require('../support/config');
 
 /**
@@ -8,11 +9,11 @@ const { newUser } = require('../support/config');
  * Swagger operationId: register (no authentication required).
  */
 describe('Path Coverage: POST /api/auth/register', () => {
-  it('registers a new user', async () => {
-    const response = await request()
-      .post('/api/auth/register')
-      .set('Content-Type', 'application/json')
-      .send(newUser);
+  it('registers a new user', async function () {
+    const response = await send(
+      this,
+      request().post('/api/auth/register').set('Content-Type', 'application/json').send(newUser)
+    );
 
     expect(response.status).to.equal(201);
     expect(response.body).to.have.property('message', 'User registered successfully.');

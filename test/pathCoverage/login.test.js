@@ -1,6 +1,7 @@
 const { expect } = require('chai');
 
 const request = require('../support/request');
+const { send } = require('../support/exchange');
 const { seededUser } = require('../support/config');
 
 /**
@@ -8,11 +9,11 @@ const { seededUser } = require('../support/config');
  * Swagger operationId: login (no authentication required).
  */
 describe('Path Coverage: POST /api/auth/login', () => {
-  it('authenticates a seeded user and returns a JWT', async () => {
-    const response = await request()
-      .post('/api/auth/login')
-      .set('Content-Type', 'application/json')
-      .send(seededUser);
+  it('authenticates a seeded user and returns a JWT', async function () {
+    const response = await send(
+      this,
+      request().post('/api/auth/login').set('Content-Type', 'application/json').send(seededUser)
+    );
 
     expect(response.status).to.equal(200);
     expect(response.body).to.have.property('token').that.is.a('string').and.is.not.empty;
