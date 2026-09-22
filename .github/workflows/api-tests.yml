@@ -1,0 +1,85 @@
+name: API Tests
+
+# Rule: the pipeline guards main, so it runs on every pull request targeting
+# main and again on the merge commit once a pull request is merged.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: api-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  path-coverage:
+    name: Path coverage tests
+    runs-on: ubuntu-latest
+
+    env:
+      # The suite reads TEST_PORT, so the API and the tests agree on one port.
+      TEST_PORT: 3001
+
+    steps:
+      # 1. Clone the repository
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # 2. Install dependencies
+      - name: Install dependencies
+        run: npm ci
+
+      # 3. Start the API in the background
+      - name: Start the API in the background
+        run: |
+          PORT=$TEST_PORT npm start > api.log 2>&1 &
+          echo "Started the API, waiting for it to answer..."
+
+      # 4. Wait until the API reports healthy
+      - name: Wait for the API healthcheck
+        run: |
+          echo "Polling http://localhost:$TEST_PORT/api/health"
+          for attempt in $(seq 1 30); do
+            status=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$TEST_PORT/api/health" || true)
+            if [ "$status" = "200" ]; then
+              echo "API is healthy after ${attempt} attempt(s)."
+              curl -s "http://localhost:$TEST_PORT/api/health"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::API did not become healthy within 30s."
+          echo "--- api.log ---"
+          cat api.log || true
+          exit 1
+
+      # 5. Run the tests
+      - name: Run path coverage tests
+        run: npm test
+
+      - name: Show API log on failure
+        if: failure()
+        run: cat api.log || true
+
+      - name: Upload Mochawesome report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: path-coverage-report
+          path: test/reports/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Stop the API
+        if: always()
+        # `npm start` spawns node as a child process, so killing npm's own PID
+        # would leave the server running. Match the server process instead.
+        run: pkill -f 'node src/server.js' || true
